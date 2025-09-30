@@ -1091,7 +1091,10 @@ async def update_playlist_cover(
 ):
     """Update cover image for a playlist."""
     try:
-        print(f"[COVER] Updating cover for playlist: {playlist_id}")
+        print(f"[COVER] ===== UPDATING COVER =====")
+        print(f"[COVER] Playlist ID: {playlist_id}")
+        print(f"[COVER] Filename: {cover_file.filename}")
+        print(f"[COVER] Content type: {cover_file.content_type}")
         
         playlist = playlist_service.get_playlist_by_id(playlist_id)
         if not playlist:
@@ -1109,32 +1112,73 @@ async def update_playlist_cover(
             file_extension = '.jpg'
         
         # Guardar imagen físicamente
-        cover_path = file_service.save_cover_image(
+        physical_path = file_service.save_cover_image(
             f"playlist_{playlist.id}", 
             image_data, 
             file_extension.lstrip('.')
         )
-        print(f"[COVER] Cover saved to: {cover_path}")
+        print(f"[COVER] Physical path: {physical_path}")
         
-        # CRÍTICO: Guardar URL del endpoint, NO el path físico
+        # Verificar que se guardó
+        if not os.path.exists(physical_path):
+            raise HTTPException(status_code=500, detail="Failed to save image")
+        
+        # CRÍTICO: Guardar URL del endpoint
         playlist.cover_image = f"/api/playlists/{playlist.id}/cover-image"
+        print(f"[COVER] URL saved in playlist: {playlist.cover_image}")
         
         save_success = playlist_service.save_playlists_to_file()
-        print(f"[COVER] Playlist saved: {save_success}")
+        print(f"[COVER] Playlist saved to file: {save_success}")
         
         return {
             "message": "Playlist cover updated successfully",
             "cover_url": playlist.cover_image,
+            "physical_path": physical_path,
             "playlist_id": playlist.id
         }
         
     except (PlaylistNotFoundError, HTTPException):
         raise
     except Exception as e:
-        print(f"[COVER] Error updating cover: {e}")
+        print(f"[COVER] Error: {e}")
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Error updating cover: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+    
+@router.delete("/{playlist_id}/cover")
+async def delete_playlist_cover(
+    playlist_id: str = Depends(validate_playlist_id),
+    playlist_service: PlaylistService = Depends(get_playlist_service),
+    file_service: FileService = Depends(get_file_service)
+):
+    """Delete cover image from playlist."""
+    try:
+        print(f"[COVER] Deleting cover for playlist: {playlist_id}")
+        
+        playlist = playlist_service.get_playlist_by_id(playlist_id)
+        if not playlist:
+            raise PlaylistNotFoundError(playlist_id)
+        
+        # Eliminar archivo físico si existe
+        if playlist.cover_image:
+            # Construir path físico
+            physical_path = os.path.join("frontend/static/uploads/covers", f"cover_playlist_{playlist.id}.jpg")
+            if os.path.exists(physical_path):
+                os.remove(physical_path)
+                print(f"[COVER] Deleted physical file: {physical_path}")
+        
+        # Limpiar en la playlist
+        playlist.cover_image = None
+        playlist_service.save_playlists_to_file()
+        
+        return {
+            "message": "Cover image deleted successfully",
+            "playlist_id": playlist_id
+        }
+        
+    except Exception as e:
+        print(f"[COVER] Error deleting cover: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # UTILITY ENDPOINTS

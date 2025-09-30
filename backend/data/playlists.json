@@ -19,13 +19,28 @@
           "album": null,
           "year": null,
           "cover_image": null,
-          "play_count": 2
+          "play_count": 3
+        },
+        {
+          "id": "dee2e376-3e4b-4922-bc06-9bc3b19f9150",
+          "filename": "pacusa rap sesion.mp3",
+          "file_path": "frontend/static/uploads\\pacusa rap sesion.mp3",
+          "title": "pacusa rap sesion",
+          "duration": 30.9595,
+          "file_size": 495352,
+          "format": "mp3",
+          "created_at": "2025-09-30T10:10:34.178484",
+          "artist": null,
+          "album": null,
+          "year": null,
+          "cover_image": null,
+          "play_count": 1
         }
       ],
       "current_position": 0,
       "created_at": "2025-09-29T02:55:58.345286",
-      "total_duration": 362.104875,
-      "song_count": 1
+      "total_duration": 393.064375,
+      "song_count": 2
     },
     {
       "id": "d628706d-52e2-4585-85f9-d365498cb1ac",

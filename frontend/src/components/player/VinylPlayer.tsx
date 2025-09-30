@@ -30,11 +30,19 @@ export function VinylPlayer({ isPlaying, currentSong, currentPlaylist }: VinylPl
 
           {/* Song Cover in Center */}
           <div className="absolute inset-0 flex items-center justify-center">
-            <div className="w-44 h-44 rounded-full overflow-hidden bg-black border-4 border-white">
+            <div className={`w-44 h-44 rounded-full overflow-hidden bg-black border-4 border-white ${isPlaying ? "vinyl-spinning" : ""}`}>
               <img
-                src={currentPlaylist?.cover_image || currentSong?.cover_image || "/placeholder-album.jpg"}
+                src={
+                  currentPlaylist?.cover_image 
+                    ? `http://localhost:8000${currentPlaylist.cover_image}` 
+                    : "/placeholder-album.jpg"
+                }
                 alt="Album Cover"
                 className="w-full h-full object-cover"
+                onError={(e) => {
+                  // Fallback si la imagen falla al cargar
+                  (e.target as HTMLImageElement).src = "/placeholder-album.jpg"
+                }}
               />
             </div>
           </div>

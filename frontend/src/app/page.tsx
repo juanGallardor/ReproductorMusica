@@ -142,28 +142,33 @@ export default function VinylMusicPlayer() {
   }, [syncWithBackend])
 
   // ATAJOS DE TECLADO
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
-        return
-      }
-
-      if (e.key === 'ArrowRight') {
-        e.preventDefault()
-        seekRelative(10)
-      } else if (e.key === 'ArrowLeft') {
-        e.preventDefault()
-        seekRelative(-10)
-      } else if (e.key === ' ') {
-        e.preventDefault()
-        togglePlay()
-      }
+useEffect(() => {
+  const handleKeyDown = (e: KeyboardEvent) => {
+    // Ignorar si estás escribiendo en inputs
+    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+      return
     }
 
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [])
+    // Flecha derecha - adelantar 10 segundos
+    if (e.key === 'ArrowRight') {
+      e.preventDefault()
+      seekRelative(10)
+    } 
+    // Flecha izquierda - retroceder 10 segundos
+    else if (e.key === 'ArrowLeft') {
+      e.preventDefault()
+      seekRelative(-10)
+    } 
+    // Barra espaciadora - play/pause
+    else if (e.key === ' ' || e.code === 'Space') {
+      e.preventDefault()
+      togglePlay()
+    }
+  }
 
+  window.addEventListener('keydown', handleKeyDown)
+  return () => window.removeEventListener('keydown', handleKeyDown)
+}, [isPlaying, currentSong, progress]) // AGREGAR dependencias
   
 const seekRelative = async (seconds: number) => {
   if (!currentSong) return
@@ -318,6 +323,8 @@ const handleCoverSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     }
   }
 
+  
+
   const toggleRepeatMode = async () => {
     const modes: RepeatMode[] = ["off", "all", "one"]
     const currentIndex = modes.indexOf(repeatMode)
@@ -438,36 +445,40 @@ const handleCoverSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
 const createPlaylist = async () => {
   if (newPlaylistName.trim()) {
     try {
-      const playlist = await api.createPlaylist(newPlaylistName, newPlaylistDescription)
+      console.log('[FRONTEND] Creating playlist...')
       
-      // Subir imagen si está seleccionada
+      const playlist = await api.createPlaylist(newPlaylistName, newPlaylistDescription)
+      console.log('[FRONTEND] Playlist created:', playlist.id)
+      
+      // Subir imagen si hay una
       if (playlistCoverInputRef.current?.files?.[0]) {
+        console.log('[FRONTEND] Uploading cover...')
+        
         const formData = new FormData()
         formData.append('cover_file', playlistCoverInputRef.current.files[0])
         
-        console.log(`[FRONTEND] Uploading cover for playlist ${playlist.id}`)
-        
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'}/playlists/${playlist.id}/cover`, {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/playlists/${playlist.id}/cover`, {
           method: 'PUT',
           body: formData
         })
         
         if (response.ok) {
-          console.log('Playlist cover uploaded successfully')
+          console.log('[FRONTEND] Cover uploaded successfully')
         } else {
-          console.error('Failed to upload cover:', await response.text())
+          console.error('[FRONTEND] Cover upload failed:', await response.text())
         }
       }
       
       await fetchPlaylists()
       setNewPlaylistName("")
       setNewPlaylistDescription("")
+      setCoverPreview(null)
       setShowCreatePlaylist(false)
       setSuccess('Playlist created successfully!')
       
-      // Refrescar playlist actual si es la nueva
       const fullPlaylist = await api.getPlaylist(playlist.id)
       setCurrentPlaylist(fullPlaylist)
+      
     } catch (err) {
       console.error('Error creating playlist:', err)
       setError('Failed to create playlist')
@@ -485,47 +496,104 @@ const createPlaylist = async () => {
 }
 
   const savePlaylistEdit = async () => {
-    if (!currentPlaylist || !newPlaylistName.trim()) return
+  if (!currentPlaylist || !newPlaylistName.trim()) return
 
-    try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/playlists/${currentPlaylist.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: newPlaylistName,
-          description: newPlaylistDescription
-        })
+  try {
+    console.log('[FRONTEND] ===== SAVING PLAYLIST EDIT =====')
+    console.log('[FRONTEND] Playlist ID:', currentPlaylist.id)
+    console.log('[FRONTEND] New name:', newPlaylistName)
+    
+    // 1. Actualizar info básica
+    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/playlists/${currentPlaylist.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: newPlaylistName,
+        description: newPlaylistDescription
       })
+    })
 
-      if (response.ok) {
-        // Subir nueva imagen si está seleccionada
-        if (playlistCoverInputRef.current?.files?.[0]) {
-          const formData = new FormData()
-          formData.append('cover_file', playlistCoverInputRef.current.files[0])
-          
-          const coverResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/playlists/${currentPlaylist.id}/cover`, {
-            method: 'PUT',
-            body: formData
-          })
-          
-          if (coverResponse.ok) {
-            console.log('Playlist cover updated successfully')
-          }
-        }
-
-        await fetchPlaylists()
-        setShowEditPlaylist(false)
-        setSuccess('Playlist updated successfully!')
-        
-        // Recargar playlist actual
-        const updatedPlaylist = await api.getPlaylist(currentPlaylist.id)
-        setCurrentPlaylist(updatedPlaylist)
-      }
-    } catch (err) {
-      console.error('Error updating playlist:', err)
-      setError('Failed to update playlist')
+    if (!response.ok) {
+      throw new Error('Failed to update playlist info')
     }
+    
+    console.log('[FRONTEND] Playlist info updated')
+
+    // 2. Subir imagen si hay una seleccionada
+    if (playlistCoverInputRef.current?.files?.[0]) {
+      console.log('[FRONTEND] Uploading new cover image...')
+      
+      const formData = new FormData()
+      formData.append('cover_file', playlistCoverInputRef.current.files[0])
+      
+      const coverResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/playlists/${currentPlaylist.id}/cover`, {
+        method: 'PUT',
+        body: formData
+      })
+      
+      if (coverResponse.ok) {
+        const result = await coverResponse.json()
+        console.log('[FRONTEND] Cover uploaded:', result)
+      } else {
+        const errorText = await coverResponse.text()
+        console.error('[FRONTEND] Cover upload failed:', errorText)
+      }
+    }
+
+    // 3. Recargar datos
+    await fetchPlaylists()
+    const updatedPlaylist = await api.getPlaylist(currentPlaylist.id)
+    setCurrentPlaylist(updatedPlaylist)
+    
+    // 4. Limpiar y cerrar
+    setShowEditPlaylist(false)
+    setCoverPreview(null)
+    setSuccess('Playlist updated successfully!')
+    
+    console.log('[FRONTEND] ===== EDIT COMPLETED =====')
+    
+  } catch (err) {
+    console.error('[FRONTEND] Error updating playlist:', err)
+    setError('Failed to update playlist')
   }
+}
+
+
+const deletePlaylistCover = async () => {
+  if (!currentPlaylist) return
+  
+  if (!window.confirm('¿Eliminar imagen de portada de la playlist?')) return
+  
+  try {
+    console.log('[FRONTEND] Deleting cover for playlist:', currentPlaylist.id)
+    
+    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/playlists/${currentPlaylist.id}/cover`, {
+      method: 'DELETE'
+    })
+    
+    if (!response.ok) {
+      throw new Error('Failed to delete cover')
+    }
+    
+    console.log('[FRONTEND] Cover deleted successfully')
+    
+    // Recargar playlist actual
+    const updatedPlaylist = await api.getPlaylist(currentPlaylist.id)
+    setCurrentPlaylist(updatedPlaylist)
+    
+    // Recargar lista de playlists
+    await fetchPlaylists()
+    
+    // Limpiar preview
+    setCoverPreview(null)
+    
+    setSuccess('Imagen eliminada correctamente')
+    
+  } catch (err) {
+    console.error('[FRONTEND] Error deleting cover:', err)
+    setError('Error al eliminar la imagen')
+  }
+}
 
   const openEditSong = (song: Song) => {
     setEditingSong(song)
@@ -792,15 +860,47 @@ const deletePlaylist = async (playlistId: string) => {
     setProgressTooltip({ visible: false, x: 0, time: "0:00" })
   }
 
-  const handleProgressClick = (e: React.MouseEvent) => {
-    if (!progressBarRef.current || !currentSong) return
+  // REEMPLAZA handleProgressClick con esta versión mejorada:
+const handleProgressClick = async (e: React.MouseEvent) => {
+  if (!progressBarRef.current || !currentSong) {
+    console.log('[SEEK] No song loaded or no ref')
+    return
+  }
 
+  try {
     const rect = progressBarRef.current.getBoundingClientRect()
     const x = e.clientX - rect.left
-    const percent = (x / rect.width) * 100
+    const clickPercent = (x / rect.width) * 100
+    const clampedPercent = Math.max(0, Math.min(100, clickPercent))
     
-    seekToPosition(Math.max(0, Math.min(100, percent)))
+    console.log('[SEEK] Click at', clampedPercent.toFixed(1), '%')
+    
+    // Calcular tiempo
+    const newTime = (clampedPercent / 100) * currentSong.duration
+    console.log('[SEEK] Seeking to', newTime.toFixed(1), 's of', currentSong.duration.toFixed(1), 's')
+    
+    // Actualizar UI inmediatamente
+    setProgress(clampedPercent)
+    const minutes = Math.floor(newTime / 60)
+    const seconds = Math.floor(newTime % 60)
+    setCurrentTime(`${minutes}:${seconds.toString().padStart(2, '0')}`)
+    
+    // Enviar al backend
+    await api.seek(newTime)
+    console.log('[SEEK] Backend seek completed')
+    
+    // Confirmar después de un momento
+    setTimeout(() => {
+      syncWithBackend()
+    }, 200)
+    
+  } catch (err) {
+    console.error('[SEEK] Error:', err)
+    setError('Error al buscar posición')
+    // Revertir en caso de error
+    await syncWithBackend()
   }
+}
 
   const formatDuration = (seconds: number) => {
     const minutes = Math.floor(seconds / 60)
@@ -1108,9 +1208,16 @@ const deletePlaylist = async (playlistId: string) => {
               <div className="absolute inset-0 flex items-center justify-center">
                 <div className={`w-44 h-44 rounded-full overflow-hidden bg-black border-4 border-white ${isPlaying ? "vinyl-spinning" : ""}`}>
                   <img
-                    src={currentPlaylist?.cover_image || currentSong?.cover_image || "/placeholder-album.jpg"}
+                    src={
+                      currentPlaylist?.cover_image 
+                        ? `http://localhost:8000${currentPlaylist?.cover_image}` 
+                        : "/placeholder-album.jpg"
+                    }
                     alt="Album Cover"
-                    className="w-full h-full object-cover"
+                    className="w-40 h-40 rounded-lg object-cover shadow-lg"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = "/placeholder-album.jpg"
+                    }}
                   />
                 </div>
               </div>
@@ -1393,55 +1500,61 @@ const deletePlaylist = async (playlistId: string) => {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-2 music-subtitle">Nueva imagen de portada (opcional)</label>
-                
-                  
-                  {/* AGREGAR PREVIEW AQUÍ */}
-                  {(coverPreview || currentPlaylist?.cover_image) && (
-                    <div className="mb-3 text-center">
-                      <img 
-                        src={coverPreview || `http://localhost:8000${currentPlaylist?.cover_image}`} 
-                        alt="Preview" 
-                        className="w-32 h-32 object-cover rounded-lg mx-auto border-2 border-white/20"
-                      />
-                      <p className="text-xs text-white/60 mt-2">
-                        {coverPreview ? 'Nueva imagen seleccionada' : 'Imagen actual'}
-                      </p>
-                    </div>
-                  )}
-                  
-                  <input
-                    ref={playlistCoverInputRef}
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={handleCoverSelect} // CAMBIAR ESTO
-                  />
-                  <Button
-                    onClick={() => playlistCoverInputRef.current?.click()}
-                    className="w-full bg-white/10 hover:bg-white/20 text-white border border-white/30"
-                    variant="outline"
-                  >
-                    <ImageIcon className="h-4 w-4 mr-2" />
-                    {coverPreview ? 'Cambiar imagen' : 'Seleccionar imagen'}
-                  </Button>
-            
-
-                <input
-                  ref={playlistCoverInputRef}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                />
-                <Button
-                  onClick={() => playlistCoverInputRef.current?.click()}
-                  className="w-full bg-white/10 hover:bg-white/20 text-white border border-white/30"
-                  variant="outline"
-                >
-                  <ImageIcon className="h-4 w-4 mr-2" />
-                  Cambiar imagen
-                </Button>
-              </div>
+  <label className="block text-sm font-medium mb-2 music-subtitle">
+    Imagen de portada
+  </label>
+  
+  {/* Preview */}
+  {(coverPreview || currentPlaylist?.cover_image) && (
+    <div className="mb-3 text-center">
+      <img 
+        src={
+          coverPreview 
+            ? coverPreview 
+            : currentPlaylist?.cover_image 
+              ? `http://localhost:8000${currentPlaylist.cover_image}` 
+              : '/placeholder-album.jpg'
+        } 
+        alt="Preview" 
+        className="w-32 h-32 object-cover rounded-lg mx-auto border-2 border-white/20"
+      />
+      <p className="text-xs text-white/60 mt-2">
+        {coverPreview ? 'Nueva imagen seleccionada' : 'Imagen actual'}
+      </p>
+    </div>
+  )}
+  
+  <input
+    ref={playlistCoverInputRef}
+    type="file"
+    accept="image/*"
+    className="hidden"
+    onChange={handleCoverSelect}
+  />
+  
+  <div className="flex gap-2">
+    <Button
+      onClick={() => playlistCoverInputRef.current?.click()}
+      className="flex-1 bg-white/10 hover:bg-white/20 text-white border border-white/30"
+      variant="outline"
+    >
+      <ImageIcon className="h-4 w-4 mr-2" />
+      {currentPlaylist?.cover_image ? 'Cambiar imagen' : 'Seleccionar imagen'}
+    </Button>
+    
+    {/* Botón de eliminar - solo si hay imagen */}
+    {currentPlaylist?.cover_image && (
+      <Button
+        onClick={deletePlaylistCover}
+        className="bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-600/30"
+        variant="outline"
+      >
+        <Trash2 className="h-4 w-4 mr-2" />
+        Eliminar
+      </Button>
+    )}
+  </div>
+</div>
               <div className="flex gap-3">
                 <Button
                   onClick={savePlaylistEdit}

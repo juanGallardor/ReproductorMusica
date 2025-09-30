@@ -1,6 +1,7 @@
 import pygame
 import threading
 import time
+import vlc
 from typing import Optional, Callable
 from models.song import Song
 from patterns.singleton import MusicPlayerManager
@@ -26,6 +27,10 @@ class AudioService:
             self.start_time: float = 0.0
             self.pause_time: float = 0.0
             
+            # VLC player para seek
+            self.vlc_instance = vlc.Instance()
+            self.vlc_player = self.vlc_instance.media_player_new()
+            
             # Callbacks
             self.on_song_finished: Optional[Callable] = None
             self.on_playback_error: Optional[Callable[[str], None]] = None
@@ -34,7 +39,7 @@ class AudioService:
             self._position_thread: Optional[threading.Thread] = None
             self._stop_position_tracking: bool = False
             
-            # CRÍTICO: Control de múltiples cargas
+            # Control de múltiples cargas
             self._loading_lock = threading.Lock()
             self._is_loading = False
             
@@ -191,13 +196,16 @@ class AudioService:
     
     def seek(self, position_seconds: float) -> bool:
         """
-        Seek simulado para pygame.mixer - VERSIÓN MEJORADA
+        Seek usando VLC player para mayor precisión.
         
-        Como pygame.mixer no soporta seek real, simulamos la posición
-        manteniendo la consistencia visual en el frontend.
+        Args:
+            position_seconds: Posición en segundos donde buscar
+            
+        Returns:
+            bool: True si el seek fue exitoso
         """
         try:
-            print(f"[AUDIO] Seek request to {position_seconds:.1f}s")
+            print(f"[AUDIO] Seek request to {position_seconds:.1f}s using VLC")
             
             if not self.current_song or position_seconds < 0:
                 print(f"[AUDIO] Seek failed: no song or invalid position")
@@ -209,37 +217,59 @@ class AudioService:
             
             was_playing = self.is_playing()
             
-            # ESTRATEGIA: En lugar de intentar seek real, 
-            # ajustamos los tiempos para simular la posición
+            # Detener pygame
+            pygame.mixer.music.stop()
             
+            # Cargar canción en VLC si no está cargada
+            media = self.vlc_instance.media_new(self.current_song.file_path)
+            self.vlc_player.set_media(media)
+            
+            # Hacer seek en VLC
+            duration_ms = int(self.current_song.duration * 1000)
+            position_ms = int(position_seconds * 1000)
+            
+            # Iniciar reproducción en VLC
+            self.vlc_player.play()
+            
+            # Esperar que VLC esté listo
+            time.sleep(0.1)
+            
+            # Hacer el seek
+            self.vlc_player.set_time(position_ms)
+            
+            print(f"[AUDIO] VLC seek to {position_seconds:.1f}s completed")
+            
+            # Ajustar volumen de VLC
+            vlc_volume = int(self.player_manager.current_volume)
+            self.vlc_player.audio_set_volume(vlc_volume)
+            
+            # Detener VLC y volver a pygame después del seek
+            time.sleep(0.2)
+            self.vlc_player.stop()
+            
+            # Reiniciar pygame en la nueva posición
+            pygame.mixer.music.load(self.current_song.file_path)
+            pygame.mixer.music.play(start=position_seconds)
+            
+            # Actualizar tiempos para tracking
             current_time = time.time()
+            self.start_time = current_time - position_seconds
             
             if was_playing:
-                # Si está reproduciendo, reiniciamos pero ajustamos start_time
-                pygame.mixer.music.stop()
-                pygame.mixer.music.play()
-                # Ajustar start_time para que get_position() devuelva position_seconds
-                self.start_time = current_time - position_seconds
                 self.player_manager.set_playing_state(True)
-                print(f"[AUDIO] Simulated seek while playing to {position_seconds:.1f}s")
+                self._start_position_tracking()
             else:
-                # Si está pausado, solo ajustamos los tiempos sin reproducir
-                self.start_time = current_time - position_seconds
+                pygame.mixer.music.pause()
                 self.pause_time = current_time
-                print(f"[AUDIO] Simulated seek while paused to {position_seconds:.1f}s")
             
-            # Actualizar posición en el manager
+            # Actualizar posición en manager
             self.player_manager.update_position(position_seconds)
             
-            # Reiniciar tracking si está reproduciendo
-            if was_playing:
-                self._start_position_tracking()
-            
-            print(f"[AUDIO] Seek simulation completed to {position_seconds:.1f}s")
+            print(f"[AUDIO] Seek completed successfully to {position_seconds:.1f}s")
             return True
             
         except Exception as e:
-            print(f"[AUDIO] Error during seek simulation: {e}")
+            print(f"[AUDIO] Error during VLC seek: {e}")
             if self.on_playback_error:
                 self.on_playback_error(f"Seek error: {e}")
             return False
@@ -368,11 +398,17 @@ class AudioService:
         return self.is_loaded and self.current_song is not None
     
     def cleanup(self) -> None:
-        """Clean up audio resources"""
+        """Clean up audio resources including VLC."""
         try:
             print("[AUDIO] Cleaning up audio service")
             self._stop_position_tracking_thread()
             self._force_stop_all_audio()
+            
+            # Limpiar VLC
+            if hasattr(self, 'vlc_player'):
+                self.vlc_player.stop()
+                self.vlc_player.release()
+            
             pygame.mixer.quit()
         except Exception as e:
             print(f"Error during cleanup: {e}")
