@@ -1,0 +1,53 @@
+{
+  "playlists": [
+    {
+      "id": "9ea5c894-2ee6-434d-93bc-a8265a4f1fe9",
+      "name": "Mi Biblioteca",
+      "description": "Canciones subidas",
+      "cover_image": "/api/playlists/9ea5c894-2ee6-434d-93bc-a8265a4f1fe9/cover-image",
+      "songs": [
+        {
+          "id": "c422eb73-17a0-4fb1-abd2-9f63261276ee",
+          "filename": "KJARKAS  Canción Para Mi Hija (LETRA)_6.mp3",
+          "file_path": "frontend/static/uploads\\KJARKAS  Canción Para Mi Hija (LETRA)_6.mp3",
+          "title": "KJARKAS  Canción Para Mi Hija (LETRA)_6",
+          "duration": 362.104875,
+          "file_size": 5793678,
+          "format": "mp3",
+          "created_at": "2025-09-30T03:20:39.802091",
+          "artist": null,
+          "album": null,
+          "year": null,
+          "cover_image": null,
+          "play_count": 2
+        }
+      ],
+      "current_position": 0,
+      "created_at": "2025-09-29T02:55:58.345286",
+      "total_duration": 362.104875,
+      "song_count": 1
+    },
+    {
+      "id": "d628706d-52e2-4585-85f9-d365498cb1ac",
+      "name": "Nueva Playlist",
+      "description": null,
+      "cover_image": null,
+      "songs": [],
+      "current_position": 0,
+      "created_at": "2025-09-29T11:23:43.804122",
+      "total_duration": 0.0,
+      "song_count": 0
+    },
+    {
+      "id": "93dff927-b409-4b5c-bb9c-55bc5546cc3f",
+      "name": "hola",
+      "description": "HOLA",
+      "cover_image": null,
+      "songs": [],
+      "current_position": 0,
+      "created_at": "2025-09-30T04:36:38.286407",
+      "total_duration": 0.0,
+      "song_count": 0
+    }
+  ]
+}
