@@ -19,28 +19,13 @@
           "album": null,
           "year": null,
           "cover_image": null,
-          "play_count": 3
-        },
-        {
-          "id": "dee2e376-3e4b-4922-bc06-9bc3b19f9150",
-          "filename": "pacusa rap sesion.mp3",
-          "file_path": "frontend/static/uploads\\pacusa rap sesion.mp3",
-          "title": "pacusa rap sesion",
-          "duration": 30.9595,
-          "file_size": 495352,
-          "format": "mp3",
-          "created_at": "2025-09-30T10:10:34.178484",
-          "artist": null,
-          "album": null,
-          "year": null,
-          "cover_image": null,
-          "play_count": 1
+          "play_count": 6
         }
       ],
       "current_position": 0,
       "created_at": "2025-09-29T02:55:58.345286",
-      "total_duration": 393.064375,
-      "song_count": 2
+      "total_duration": 362.104875,
+      "song_count": 1
     },
     {
       "id": "d628706d-52e2-4585-85f9-d365498cb1ac",
@@ -50,17 +35,6 @@
       "songs": [],
       "current_position": 0,
       "created_at": "2025-09-29T11:23:43.804122",
-      "total_duration": 0.0,
-      "song_count": 0
-    },
-    {
-      "id": "93dff927-b409-4b5c-bb9c-55bc5546cc3f",
-      "name": "hola",
-      "description": "HOLA",
-      "cover_image": null,
-      "songs": [],
-      "current_position": 0,
-      "created_at": "2025-09-30T04:36:38.286407",
       "total_duration": 0.0,
       "song_count": 0
     }

@@ -427,12 +427,9 @@ async def set_repeat_mode(
     repeat_data: RepeatModeUpdate,
     player_manager: MusicPlayerManager = Depends(get_music_player_manager)
 ):
-    """
-    Set the repeat mode for playback.
-    
-    Sets repeat mode: off, one (repeat current song), all (repeat playlist).
-    """
+    """Set the repeat mode for playback."""
     try:
+        print(f"[PLAYER] Setting repeat mode to: {repeat_data.mode}")
         player_manager.set_repeat_mode(repeat_data.mode)
         
         return {
@@ -441,10 +438,12 @@ async def set_repeat_mode(
         }
         
     except Exception as e:
+        print(f"[PLAYER] Error setting repeat mode: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error setting repeat mode: {str(e)}"
         )
+
 
 
 @router.put("/shuffle-mode")

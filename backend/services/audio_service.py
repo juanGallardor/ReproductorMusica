@@ -116,25 +116,26 @@ class AudioService:
             self._is_loading = False
     
     def play(self) -> bool:
-        """Start or resume playback - CON CONTROL MEJORADO"""
+        """Start or resume playback."""
         try:
             if not self.is_loaded or not self.current_song:
                 print("[AUDIO] No song loaded for playback")
                 return False
             
             if self.is_paused():
-                # Reanudar desde pausa
                 pygame.mixer.music.unpause()
                 self.start_time += time.time() - self.pause_time
                 print("[AUDIO] Resumed from pause")
             else:
-                # Iniciar desde el principio
                 pygame.mixer.music.play()
                 self.start_time = time.time()
                 print(f"[AUDIO] Started playing: {self.current_song.title}")
             
             self.player_manager.set_playing_state(True)
+            
+            # CRÍTICO: Iniciar position tracking
             self._start_position_tracking()
+            print("[AUDIO] Position tracking started")
             
             return True
             
@@ -195,15 +196,7 @@ class AudioService:
         return self.player_manager.current_volume
     
     def seek(self, position_seconds: float) -> bool:
-        """
-        Seek usando VLC player para mayor precisión.
-        
-        Args:
-            position_seconds: Posición en segundos donde buscar
-            
-        Returns:
-            bool: True si el seek fue exitoso
-        """
+        """Seek usando VLC player para mayor precisión."""
         try:
             print(f"[AUDIO] Seek request to {position_seconds:.1f}s using VLC")
             
@@ -216,6 +209,9 @@ class AudioService:
                 print(f"[AUDIO] Position clamped to {position_seconds:.1f}s")
             
             was_playing = self.is_playing()
+            
+            # CRÍTICO: Detener el tracking antes de hacer cambios
+            self._stop_position_tracking_thread()
             
             # Detener pygame
             pygame.mixer.music.stop()
@@ -257,7 +253,9 @@ class AudioService:
             
             if was_playing:
                 self.player_manager.set_playing_state(True)
+                # CRÍTICO: Reiniciar el tracking
                 self._start_position_tracking()
+                print("[AUDIO] Position tracking restarted after seek")
             else:
                 pygame.mixer.music.pause()
                 self.pause_time = current_time
@@ -270,9 +268,12 @@ class AudioService:
             
         except Exception as e:
             print(f"[AUDIO] Error during VLC seek: {e}")
+            import traceback
+            traceback.print_exc()
             if self.on_playback_error:
                 self.on_playback_error(f"Seek error: {e}")
             return False
+        
 
     # También necesitamos mejorar get_position para ser más preciso:
     def get_position(self) -> float:
@@ -330,57 +331,153 @@ class AudioService:
         return self.seek(new_position)
     
     def _start_position_tracking(self) -> None:
-        """Start position tracking thread"""
+        """Start position tracking thread."""
+        # CRÍTICO: Detener thread anterior si existe
         if self._position_thread and self._position_thread.is_alive():
-            return
+            print("[AUDIO] Stopping existing position tracker")
+            self._stop_position_tracking_thread()
         
+        print("[AUDIO] Starting new position tracking thread")
         self._stop_position_tracking = False
         self._position_thread = threading.Thread(target=self._position_tracker, daemon=True)
         self._position_thread.start()
     
     def _stop_position_tracking_thread(self) -> None:
-        """Stop position tracking thread"""
+        """Stop position tracking thread."""
+        print("[AUDIO] Requesting position tracker to stop")
         self._stop_position_tracking = True
         if self._position_thread and self._position_thread.is_alive():
             self._position_thread.join(timeout=1.0)
+            print("[AUDIO] Position tracker stopped")
     
     def _position_tracker(self) -> None:
-        """Track playback position and handle song end"""
+        """Track playback position and handle song end."""
+        print("[AUDIO] Position tracker thread started")
+        
         while not self._stop_position_tracking:
             try:
                 if self.is_playing() and self.current_song:
                     current_pos = self.get_position()
                     self.player_manager.update_position(current_pos)
                     
-                    # Check if song finished
+                    # Debug: mostrar posición cada 5 segundos
+                    if int(current_pos) % 5 == 0:
+                        print(f"[AUDIO] Position: {current_pos:.1f}s / {self.current_song.duration:.1f}s")
+                    
+                    # Verificar si la canción terminó
                     if current_pos >= self.current_song.duration - 0.5:
-                        print("[AUDIO] Song finished, triggering next")
+                        print(f"[AUDIO] !!! SONG REACHED END !!! ({current_pos:.1f}s >= {self.current_song.duration - 0.5:.1f}s)")
+                        self._handle_song_finished()
+                        break
+                    
+                    # CRÍTICO: También verificar si pygame terminó
+                    if not pygame.mixer.music.get_busy():
+                        print("[AUDIO] !!! PYGAME STOPPED !!! Song finished")
                         self._handle_song_finished()
                         break
                 
-                time.sleep(0.1)  # Update every 100ms
+                time.sleep(0.1)
                 
             except Exception as e:
+                print(f"[AUDIO] ERROR in position tracker: {e}")
+                import traceback
+                traceback.print_exc()
                 if self.on_playback_error:
                     self.on_playback_error(f"Position tracking error: {e}")
                 break
     
+    print("[AUDIO] Position tracker thread ended")
+
     def _handle_song_finished(self) -> None:
-        """Handle when a song finishes playing"""
-        print("[AUDIO] Handling song finished")
-        self.stop()
-        
-        if self.on_song_finished:
-            self.on_song_finished()
-        else:
-            # Default behavior: try to play next song
-            if self.player_manager.next_song():
-                next_song = self.player_manager.get_current_playlist().get_current_song()
-                if next_song:
-                    print(f"[AUDIO] Auto-playing next: {next_song.title}")
-                    if self.load_song(next_song):
-                        self.play()
+        """Handle when a song finishes playing."""
+        print("[AUDIO] ========================================")
+        print("[AUDIO] SONG FINISHED - HANDLING AUTO-NEXT")
+        print("[AUDIO] ========================================")
     
+        try:
+            # Detener audio actual
+            self.stop()
+            print("[AUDIO] Current song stopped")
+            
+            # Obtener estado del player
+            repeat_mode = self.player_manager.repeat_mode
+            shuffle_mode = self.player_manager.shuffle_mode
+            
+            print(f"[AUDIO] Repeat mode: {repeat_mode}")
+            print(f"[AUDIO] Shuffle mode: {shuffle_mode}")
+            
+            if not self.player_manager.current_playlist:
+                print("[AUDIO] No current playlist - stopping")
+                return
+            
+            current_playlist = self.player_manager.current_playlist
+            print(f"[AUDIO] Current playlist: {current_playlist.name}")
+            print(f"[AUDIO] Current position: {current_playlist.current_position}")
+            print(f"[AUDIO] Total songs: {current_playlist.song_count}")
+            
+            # Lógica según modo de repetición
+            if repeat_mode == "one":
+                # Repetir la misma canción
+                print("[AUDIO] REPEAT ONE - Replaying same song")
+                current_song = current_playlist.get_current_song()
+                if current_song:
+                    print(f"[AUDIO] Reloading: {current_song.title}")
+                    if self.load_song(current_song):
+                        self.play()
+                        print("[AUDIO] Song replayed successfully")
+                    else:
+                        print("[AUDIO] ERROR: Failed to reload song")
+            
+            elif repeat_mode == "all" or repeat_mode == "off":
+                # Intentar siguiente canción
+                print("[AUDIO] Attempting to go to next song...")
+                
+                next_success = self.player_manager.next_song()
+                print(f"[AUDIO] Next song success: {next_success}")
+                
+                if next_success:
+                    next_song = current_playlist.get_current_song()
+                    if next_song:
+                        print(f"[AUDIO] Loading next song: {next_song.title}")
+                        if self.load_song(next_song):
+                            self.play()
+                            print("[AUDIO] Next song playing successfully")
+                        else:
+                            print("[AUDIO] ERROR: Failed to load next song")
+                    else:
+                        print("[AUDIO] ERROR: No next song found")
+                else:
+                    # No hay más canciones
+                    print("[AUDIO] No more songs available")
+                    
+                    if repeat_mode == "all":
+                        # Volver al inicio de la playlist
+                        print("[AUDIO] REPEAT ALL - Going back to start")
+                        current_playlist.set_current_position(0)
+                        first_song = current_playlist.get_current_song()
+                        
+                        if first_song:
+                            print(f"[AUDIO] Loading first song: {first_song.title}")
+                            if self.load_song(first_song):
+                                self.play()
+                                print("[AUDIO] Playlist restarted successfully")
+                            else:
+                                print("[AUDIO] ERROR: Failed to load first song")
+                        else:
+                            print("[AUDIO] ERROR: No first song found")
+                    else:
+                        print("[AUDIO] Playlist ended - stopping playback")
+            
+            print("[AUDIO] ========================================")
+            print("[AUDIO] SONG FINISHED HANDLER COMPLETED")
+            print("[AUDIO] ========================================")
+            
+        except Exception as e:
+            print(f"[AUDIO] CRITICAL ERROR in _handle_song_finished: {e}")
+            import traceback
+            traceback.print_exc()
+            
+            
     def set_song_finished_callback(self, callback: Callable) -> None:
         """Set callback for when song finishes"""
         self.on_song_finished = callback

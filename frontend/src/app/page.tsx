@@ -106,12 +106,24 @@ export default function VinylMusicPlayer() {
     setRepeatMode(status.repeat_mode)
     setShuffleMode(status.shuffle_mode)
     
-    // Actualizar progreso
-    if (status.position_seconds && status.current_song) {
-      const progressPercent = (status.position_seconds / status.current_song.duration) * 100
-      setProgress(progressPercent)
-      setCurrentTime(status.position_formatted)
-      setTotalTime(status.current_song.duration_formatted)
+    // CRÍTICO: Actualizar progreso correctamente
+    if (status.position_seconds !== undefined && status.current_song) {
+      const duration = status.current_song.duration
+      
+      // Validar que los valores sean correctos
+      if (duration > 0 && status.position_seconds >= 0) {
+        const progressPercent = Math.min(100, (status.position_seconds / duration) * 100)
+        
+        console.log('[SYNC] Progress:', {
+          position: status.position_seconds.toFixed(1),
+          duration: duration.toFixed(1),
+          percent: progressPercent.toFixed(1)
+        })
+        
+        setProgress(progressPercent)
+        setCurrentTime(status.position_formatted)
+        setTotalTime(status.current_song.duration_formatted)
+      }
     }
     
     // Actualizar canción actual
@@ -119,7 +131,6 @@ export default function VinylMusicPlayer() {
       setCurrentSong(status.current_song)
     }
     
-    // CRÍTICO: Solo actualizar playlist si NO estamos cambiando manualmente
     if (!isSwitchingPlaylist && status.current_playlist && status.current_playlist.id !== currentPlaylist?.id) {
       const fullPlaylist = await api.getPlaylist(status.current_playlist.id)
       setCurrentPlaylist(fullPlaylist)
@@ -128,7 +139,7 @@ export default function VinylMusicPlayer() {
   } catch (err) {
     console.error('Error syncing with backend:', err)
   }
-}, [currentSong?.id, currentPlaylist?.id, isSwitchingPlaylist]) // AGREGAR isSwitchingPlaylist
+}, [currentSong?.id, currentPlaylist?.id, isSwitchingPlaylist])
 
   // Sincronización automática cada segundo
   useEffect(() => {
@@ -301,27 +312,81 @@ const handleCoverSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
   }
 
 
-  const nextSong = async () => {
-    try {
-      await api.next()
-      await syncWithBackend()
-      console.log('[BACKEND] Next song')
-    } catch (err) {
-      console.error('Error skipping to next:', err)
-      setError('Failed to skip to next song')
-    }
+const nextSong = async () => {
+  if (!currentPlaylist || !currentPlaylist.songs || currentPlaylist.songs.length === 0) {
+    setError('No hay playlist o canciones disponibles')
+    return
   }
 
-  const prevSong = async () => {
-    try {
-      await api.previous()
-      await syncWithBackend()
-      console.log('[BACKEND] Previous song')
-    } catch (err) {
-      console.error('Error skipping to previous:', err)
-      setError('Failed to skip to previous song')
+  try {
+    console.log('[PLAYER] Next song requested')
+    
+    // Marcar que estamos cambiando
+    setIsSwitchingPlaylist(true)
+    
+    // Llamar al backend para avanzar
+    await api.next()
+    console.log('[PLAYER] Backend next completed')
+    
+    // Sincronizar estado
+    await syncWithBackend()
+    
+    // Obtener la nueva canción actual del backend
+    const status = await api.getPlayerStatus()
+    if (status.current_song) {
+      setCurrentSong(status.current_song)
+      console.log('[PLAYER] Now playing:', status.current_song.title)
     }
+    
+    // Permitir sincronización después de 1 segundo
+    setTimeout(() => {
+      setIsSwitchingPlaylist(false)
+    }, 1000)
+    
+  } catch (err) {
+    console.error('[PLAYER] Error skipping to next:', err)
+    setError('Error al pasar a la siguiente canción')
+    setIsSwitchingPlaylist(false)
   }
+}
+
+const prevSong = async () => {
+  if (!currentPlaylist || !currentPlaylist.songs || currentPlaylist.songs.length === 0) {
+    setError('No hay playlist o canciones disponibles')
+    return
+  }
+
+  try {
+    console.log('[PLAYER] Previous song requested')
+    
+    // Marcar que estamos cambiando
+    setIsSwitchingPlaylist(true)
+    
+    // Llamar al backend para retroceder
+    await api.previous()
+    console.log('[PLAYER] Backend previous completed')
+    
+    // Sincronizar estado
+    await syncWithBackend()
+    
+    // Obtener la nueva canción actual del backend
+    const status = await api.getPlayerStatus()
+    if (status.current_song) {
+      setCurrentSong(status.current_song)
+      console.log('[PLAYER] Now playing:', status.current_song.title)
+    }
+    
+    // Permitir sincronización después de 1 segundo
+    setTimeout(() => {
+      setIsSwitchingPlaylist(false)
+    }, 1000)
+    
+  } catch (err) {
+    console.error('[PLAYER] Error skipping to previous:', err)
+    setError('Error al pasar a la canción anterior')
+    setIsSwitchingPlaylist(false)
+  }
+}
 
   
 
@@ -946,16 +1011,33 @@ const handleProgressClick = async (e: React.MouseEvent) => {
         <div className="diagonal-progress-container bg-gradient-to-r from-gray-200 to-white shadow-lg">
           <div className="flex items-center gap-2 p-4 min-w-0">
             <div className="flex items-center gap-2 flex-shrink-0">
-              <Button onClick={prevSong} className="bg-black/20 hover:bg-black/30 text-black p-2" size="icon">
+              <Button 
+                onClick={prevSong}  // DEBE llamar a prevSong
+                className="bg-black/20 hover:bg-black/30 text-black p-2" 
+                size="icon"
+                disabled={!currentPlaylist || currentPlaylist.songs?.length === 0}
+              >
                 <SkipBack className="h-4 w-4" />
               </Button>
-              <Button onClick={togglePlay} className="bg-red-600 hover:bg-red-700 text-white w-10 h-10" size="icon">
+              
+              <Button 
+                onClick={togglePlay} 
+                className="bg-red-600 hover:bg-red-700 text-white w-10 h-10" 
+                size="icon"
+                disabled={!currentSong}
+              >
                 {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
               </Button>
-              <Button onClick={nextSong} className="bg-black/20 hover:bg-black/30 text-black p-2" size="icon">
+              
+              <Button 
+                onClick={nextSong}  // DEBE llamar a nextSong
+                className="bg-black/20 hover:bg-black/30 text-black p-2" 
+                size="icon"
+                disabled={!currentPlaylist || currentPlaylist.songs?.length === 0}
+              >
                 <SkipForward className="h-4 w-4" />
               </Button>
-            </div>
+</div>
 
             {/* Audio visualizer INTERACTIVO */}
             <div 
