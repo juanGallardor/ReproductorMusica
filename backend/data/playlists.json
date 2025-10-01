@@ -37,6 +37,33 @@
       "created_at": "2025-09-29T11:23:43.804122",
       "total_duration": 0.0,
       "song_count": 0
+    },
+    {
+      "id": "79c0a070-c299-435e-a5bb-c4573a18d4d4",
+      "name": "asd",
+      "description": "asd",
+      "cover_image": null,
+      "songs": [
+        {
+          "id": "2a3759d0-f3e3-4170-a1e9-795751c1e7a6",
+          "filename": "Happy Birthday To You Guitar Instrumental_1.mp3",
+          "file_path": "frontend/static/uploads\\Happy Birthday To You Guitar Instrumental_1.mp3",
+          "title": "Happy Birthday To You Guitar Instrumental_1",
+          "duration": 81.5889375,
+          "file_size": 1305423,
+          "format": "mp3",
+          "created_at": "2025-10-01T01:05:39.167685",
+          "artist": "elmismisimo",
+          "album": null,
+          "year": 1806,
+          "cover_image": null,
+          "play_count": 0
+        }
+      ],
+      "current_position": 0,
+      "created_at": "2025-09-30T22:26:55.536107",
+      "total_duration": 81.5889375,
+      "song_count": 1
     }
   ]
 }

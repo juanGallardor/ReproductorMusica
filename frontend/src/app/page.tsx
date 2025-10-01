@@ -477,31 +477,89 @@ const prevSong = async () => {
     setIsSwitchingPlaylist(false)
   }
 }
+
+
   const selectPlaylist = async (playlist: Playlist) => {
   try {
-    console.log(`[FRONTEND] Selecting playlist: ${playlist.name}`)
+    console.log(`[FRONTEND] ===== SELECTING PLAYLIST =====`)
+    console.log(`[FRONTEND] Playlist: ${playlist.name} (${playlist.id})`)
     
-    // CRÍTICO: Marcar que estamos cambiando playlist
     setIsSwitchingPlaylist(true)
     
+    // 1. Obtener playlist completa
     const fullPlaylist = await api.getPlaylist(playlist.id)
+    console.log(`[FRONTEND] Full playlist loaded: ${fullPlaylist.song_count} songs`)
+    
+    // 2. Actualizar estado local PRIMERO
     setCurrentPlaylist(fullPlaylist)
     
-    if (fullPlaylist.songs && fullPlaylist.songs.length > 0) {
-      await api.setCurrentPlaylist(fullPlaylist.id, 0)
-      await syncWithBackend()
+    // 3. SIEMPRE establecer en el backend (incluso si está vacía)
+    console.log(`[FRONTEND] Setting playlist in backend...`)
+    
+    try {
+      // Llamar al backend - esto funcionará aunque la playlist esté vacía
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/player/playlist/${fullPlaylist.id}?position=0`, {
+        method: 'PUT',
+      });
+      
+      if (response.ok) {
+        const result = await response.json()
+        console.log(`[FRONTEND] Backend response:`, result)
+      } else {
+        // Si falla porque está vacía, es OK - igual actualizar el estado
+        console.log(`[FRONTEND] Backend call failed (might be empty playlist), continuing anyway`)
+      }
+    } catch (backendError) {
+      console.log(`[FRONTEND] Backend error (continuing):`, backendError)
+    }
+    
+    // 4. Limpiar estado del reproductor si la playlist está vacía
+    if (!fullPlaylist.songs || fullPlaylist.songs.length === 0) {
+      console.log(`[FRONTEND] Empty playlist - clearing player state`)
+      setCurrentSong(null)
+      setIsPlaying(false)
+      setProgress(0)
+      setCurrentTime("0:00")
+      setTotalTime("0:00")
+    } else {
+      // Si tiene canciones, sincronizar normalmente
+      await new Promise(resolve => setTimeout(resolve, 500))
+      
+      const status = await api.getPlayerStatus()
+      console.log(`[FRONTEND] Got status:`, {
+        current_playlist: status.current_playlist?.name,
+        current_song: status.current_song?.title,
+        is_playing: status.is_playing
+      })
+      
+      setIsPlaying(status.is_playing)
+      setCurrentSong(status.current_song || null)
+      setVolume(status.volume)
+      setRepeatMode(status.repeat_mode)
+      setShuffleMode(status.shuffle_mode)
+      
+      if (status.current_song) {
+        const progressPercent = (status.position_seconds / status.current_song.duration) * 100
+        setProgress(progressPercent)
+        setCurrentTime(status.position_formatted)
+        setTotalTime(status.current_song.duration_formatted)
+      }
     }
     
     setSidebarOpen(false)
     
-    // Después de 2 segundos, permitir sincronización normal
     setTimeout(() => {
       setIsSwitchingPlaylist(false)
+      console.log(`[FRONTEND] Switching flag cleared`)
     }, 2000)
     
+    setSuccess(`Switched to: ${playlist.name}${fullPlaylist.song_count === 0 ? ' (empty - add songs now!)' : ''}`)
+    console.log(`[FRONTEND] ===== PLAYLIST CHANGE COMPLETE =====`)
+    
   } catch (err) {
-    console.error('Error selecting playlist:', err)
-    setIsSwitchingPlaylist(false) // Reset en caso de error
+    console.error('[FRONTEND] Error selecting playlist:', err)
+    setError('Failed to change playlist')
+    setIsSwitchingPlaylist(false)
   }
 }
 

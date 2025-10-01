@@ -83,7 +83,6 @@ class PlaylistInfo(BaseModel):
 
 
 class PlayerStatus(BaseModel):
-    """Model for complete player status."""
     is_playing: bool
     is_paused: bool
     volume: float
@@ -91,8 +90,8 @@ class PlayerStatus(BaseModel):
     shuffle_mode: bool
     position_seconds: float
     position_formatted: str
-    current_song: Optional[CurrentSongResponse]
-    current_playlist: Optional[PlaylistInfo]
+    current_song: Optional[CurrentSongResponse] = None  
+    current_playlist: Optional[PlaylistInfo] = None     
     has_audio_loaded: bool
 
 
@@ -726,57 +725,85 @@ async def set_current_playlist(
     playlist_service: PlaylistService = Depends(get_playlist_service),
     audio_service: AudioService = Depends(get_audio_service)
 ):
-    """Set the current active playlist and optionally start playing."""
+    """Set the current active playlist and start playing."""
     try:
+        print(f"[PLAYER] ===== CHANGING PLAYLIST =====")
+        print(f"[PLAYER] Requested playlist: {playlist_id}")
+        print(f"[PLAYER] Position: {position}")
+        
         playlist = playlist_service.get_playlist_by_id(playlist_id)
         if not playlist:
             raise PlaylistNotFoundError(playlist_id)
         
-        if playlist.is_empty():
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Cannot set empty playlist as current"
-            )
+        print(f"[PLAYER] Found playlist: {playlist.name}")
+        print(f"[PLAYER] Playlist has {playlist.song_count} songs")
         
-        # Validate position
+        # Permitir playlists vacías
+        if playlist.is_empty():
+            print(f"[PLAYER] Setting empty playlist: {playlist.name}")
+            player_manager.set_current_playlist(playlist)
+            
+            return {
+                "message": "Current playlist updated (empty)",
+                "success": True,
+                "playlist_id": playlist_id,
+                "playlist_name": playlist.name,
+                "song_count": 0,
+                "current_position": 0,
+                "current_song": None,
+                "is_playing": False
+            }
+        
+        # Validar posición
         if position >= playlist.song_count:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Invalid position. Playlist has {playlist.song_count} songs"
             )
         
-        print(f"[PLAYER] Setting playlist: {playlist.name}, position: {position}")
-        
-        # CRÍTICO: Detener audio actual antes de cambiar
+        print(f"[PLAYER] Stopping current audio...")
         audio_service.stop()
         
-        # Establecer playlist y posición
+        print(f"[PLAYER] Setting playlist in manager...")
         player_manager.set_current_playlist(playlist)
+        
+        print(f"[PLAYER] Setting position to {position}...")
         playlist.set_current_position(position)
         
         current_song = playlist.get_current_song()
+        print(f"[PLAYER] Current song: {current_song.title if current_song else 'None'}")
         
-        # NUEVO: Auto-cargar y reproducir la canción
         if current_song:
-            print(f"[PLAYER] Auto-loading song: {current_song.title}")
+            print(f"[PLAYER] Loading song: {current_song.title}")
+            
             if audio_service.load_song(current_song):
-                audio_service.play()
-                print(f"[PLAYER] Auto-playing: {current_song.title}")
+                print(f"[PLAYER] Song loaded successfully")
+                if audio_service.play():
+                    print(f"[PLAYER] Playing: {current_song.title}")
+                else:
+                    print(f"[PLAYER] WARNING: Failed to start playback")
+            else:
+                print(f"[PLAYER] ERROR: Failed to load song")
+        
+        print(f"[PLAYER] ===== PLAYLIST CHANGE COMPLETE =====")
         
         return {
             "message": "Current playlist updated and playing",
+            "success": True,
             "playlist_id": playlist_id,
             "playlist_name": playlist.name,
             "song_count": playlist.song_count,
             "current_position": position,
             "current_song": current_song.get_display_name() if current_song else None,
-            "auto_playing": current_song is not None
+            "is_playing": audio_service.is_playing()
         }
         
     except (PlaylistNotFoundError, HTTPException):
         raise
     except Exception as e:
-        print(f"[PLAYER] Error setting current playlist: {str(e)}")
+        print(f"[PLAYER] CRITICAL ERROR: {str(e)}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error setting current playlist: {str(e)}"
@@ -897,42 +924,4 @@ async def toggle_mute(
         )
 
 
-@router.get("/debug")
-async def get_debug_info(
-    player_manager: MusicPlayerManager = Depends(get_music_player_manager),
-    audio_service: AudioService = Depends(get_audio_service)
-):
-    """
-    Get debug information about the player state.
-    
-    Returns detailed internal state for debugging purposes.
-    """
-    try:
-        debug_info = {
-            "player_manager": {
-                "has_current_playlist": player_manager.current_playlist is not None,
-                "playlist_name": player_manager.current_playlist.name if player_manager.current_playlist else None,
-                "current_position": player_manager.current_playlist.current_position if player_manager.current_playlist else None,
-                "repeat_mode": player_manager.repeat_mode,
-                "shuffle_mode": player_manager.shuffle_mode,
-                "volume": player_manager.current_volume,
-                "is_playing": player_manager.is_playing,
-                "is_paused": player_manager.is_paused
-            },
-            "audio_service": {
-                "is_song_loaded": audio_service.is_song_loaded(),
-                "current_song_id": audio_service.get_current_song().id if audio_service.get_current_song() else None,
-                "is_playing": audio_service.is_playing(),
-                "is_paused": audio_service.is_paused(),
-                "position": audio_service.get_position(),
-                "volume": audio_service.get_volume()
-            }
-        }
-        
-        return debug_info
-        
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error getting debug info: {str(e)}"
-        )
+         
